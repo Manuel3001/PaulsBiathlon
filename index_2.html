@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Biathlon Pro Tracker</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #0B2447;
+            --card-color: #19376D;
+            --accent-color: #A5C9FF; 
+            --error-color: #FF5C5C;
+            --text-color: #FFFFFF;
+            --success-green: #4CAF50;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center; /* Zentriert die App auf großen Bildschirmen */
+        }
+
+        /* Container begrenzt die Breite auf Laptop-Bildschirmen */
+        .container {
+            width: 100%;
+            max-width: 600px; 
+            padding-bottom: 80px;
+        }
+
+        h1, h2, h3 { margin-top: 0; }
+
+        .card {
+            background-color: var(--card-color);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        /* Dashboard Styles */
+        .dashboard-header { text-align: center; }
+        .big-percent { font-size: 3em; font-weight: bold; color: var(--accent-color); display: block; }
+        .mini-stats { display: flex; justify-content: space-around; margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); }
+        
+        /* Eingabe Styles */
+        label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 0.9em; color: #ccc; }
+        input, select {
+            width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 8px; border: none;
+            background: rgba(255,255,255,0.1); color: white; font-size: 1em; box-sizing: border-box;
+        }
+
+        /* Schießscheiben */
+        .shooting-row { display: flex; justify-content: space-between; margin-bottom: 15px; }
+        .target-btn {
+            width: 45px; height: 45px; border-radius: 50%; border: 2px solid white;
+            background-color: var(--bg-color); cursor: pointer; transition: all 0.2s;
+        }
+        .target-btn.hit { background-color: var(--accent-color); border-color: var(--accent-color); }
+        .target-btn.miss { background-color: var(--error-color); border-color: var(--error-color); }
+
+        /* Buttons */
+        .btn {
+            width: 100%; padding: 15px; border: none; border-radius: 10px;
+            font-size: 1.1em; font-weight: bold; cursor: pointer; margin-top: 10px;
+        }
+        .save-btn { background-color: var(--accent-color); color: var(--bg-color); }
+        .data-btn { background-color: rgba(255,255,255,0.1); color: white; margin-top: 10px; font-size: 0.9em;}
+        .file-input { display: none; }
+
+        /* Navigation */
+        .nav-tabs { display: flex; margin-bottom: 20px; }
+        .nav-tab { flex: 1; padding: 10px; text-align: center; background: rgba(255,255,255,0.1); cursor: pointer; }
+        .nav-tab.active { background: var(--accent-color); color: var(--bg-color); font-weight: bold; }
+        .nav-tab:first-child { border-radius: 10px 0 0 10px; }
+        .nav-tab:last-child { border-radius: 0 10px 10px 0; }
+
+        .hidden { display: none; }
+        .chart-container { position: relative; height: 250px; width: 100%; }
+        
+        /* Delete Button Style */
+        .delete-btn { color: #ff5c5c; cursor: pointer; font-weight: bold; margin-left: 10px;}
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="nav-tabs">
+        <div class="nav-tab active" onclick="showSection('dashboard')">Übersicht</div>
+        <div class="nav-tab" onclick="showSection('entry')">Training +</div>
+        <div class="nav-tab" onclick="showSection('settings')">Daten</div>
+    </div>
+
+    <div id="dashboard-section">
+        <div class="card dashboard-header">
+            <h2>Gesamtleistung</h2>
+            <div class="chart-container">
+                <canvas id="totalChart"></canvas>
+            </div>
+            <span class="big-percent" id="totalPercent">0%</span>
+            <div class="mini-stats">
+                <div class="mini-stat-item">
+                    <div>Liegend</div>
+                    <strong style="color: var(--accent-color)" id="pronePercent">0%</strong>
+                </div>
+                <div class="mini-stat-item">
+                    <div>Stehend</div>
+                    <strong style="color: var(--error-color)" id="standPercent">0%</strong>
+                </div>
+            </div>
+        </div>
+
+        <h3>Verlauf</h3>
+        <div id="history-list">
+            <div class="card" style="text-align:center; opacity:0.7;">Noch keine Daten vorhanden.</div>
+        </div>
+    </div>
+
+    <div id="entry-section" class="hidden">
+        <div class="card">
+            <h3>📝 Umgebungsdaten</h3>
+            <label>Ort</label>
+            <input type="text" id="locationInput" placeholder="z.B. Hochfilzen">
+            
+            <label>Wind</label>
+            <select id="windInput">
+                <option value="Kein Wind">Kein Wind</option>
+                <option value="Leicht">Leicht</option>
+                <option value="Mittel">Mittel</option>
+                <option value="Stark">Stark / Böig</option>
+            </select>
+            <input type="number" id="windDirInput" min="1" max="12" placeholder="Windrichtung (z.B. 9 Uhr)">
+        </div>
+
+        <div class="card">
+            <h3>🧊 Liegend</h3>
+            <div class="shooting-row" id="prone-row">
+                <button class="target-btn" onclick="toggleTarget(this)">1</button>
+                <button class="target-btn" onclick="toggleTarget(this)">2</button>
+                <button class="target-btn" onclick="toggleTarget(this)">3</button>
+                <button class="target-btn" onclick="toggleTarget(this)">4</button>
+                <button class="target-btn" onclick="toggleTarget(this)">5</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>🔥 Stehend</h3>
+            <div class="shooting-row" id="stand-row">
+                <button class="target-btn" onclick="toggleTarget(this)">1</button>
+                <button class="target-btn" onclick="toggleTarget(this)">2</button>
+                <button class="target-btn" onclick="toggleTarget(this)">3</button>
+                <button class="target-btn" onclick="toggleTarget(this)">4</button>
+                <button class="target-btn" onclick="toggleTarget(this)">5</button>
+            </div>
+        </div>
+
+        <button class="btn save-btn" onclick="saveData()">Speichern</button>
+    </div>
+
+    <div id="settings-section" class="hidden">
+        <div class="card">
+            <h3>💾 Datenverwaltung</h3>
+            <p style="font-size:0.9em; opacity:0.8;">
+                Hier kannst du deine Daten sichern, um sie z.B. vom Handy auf den Laptop zu übertragen.
+            </p>
+            <button class="btn data-btn" onclick="downloadData()">⬇ Daten herunterladen (Backup)</button>
+            
+            <button class="btn data-btn" onclick="document.getElementById('fileInput').click()">⬆ Daten einlesen (Import)</button>
+            <input type="file" id="fileInput" class="file-input" accept=".json" onchange="loadDataFile(this)">
+            
+            <hr style="border-color:rgba(255,255,255,0.1); margin: 20px 0;">
+            
+            <button class="btn data-btn" style="background-color: var(--error-color);" onclick="clearAllData()">⚠ Alles löschen</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let trainingData = JSON.parse(localStorage.getItem('biathlonData')) || [];
+    let myChart = null;
+
+    window.onload = function() { updateDashboard(); };
+
+    function showSection(sectionId) {
+        document.getElementById('dashboard-section').classList.add('hidden');
+        document.getElementById('entry-section').classList.add('hidden');
+        document.getElementById('settings-section').classList.add('hidden');
+        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+
+        if(sectionId === 'dashboard') {
+            document.getElementById('dashboard-section').classList.remove('hidden');
+            document.querySelectorAll('.nav-tab')[0].classList.add('active');
+            updateDashboard();
+        } else if (sectionId === 'entry') {
+            document.getElementById('entry-section').classList.remove('hidden');
+            document.querySelectorAll('.nav-tab')[1].classList.add('active');
+            resetForm();
+        } else {
+            document.getElementById('settings-section').classList.remove('hidden');
+            document.querySelectorAll('.nav-tab')[2].classList.add('active');
+        }
+    }
+
+    function toggleTarget(btn) {
+        if (btn.classList.contains('hit')) {
+            btn.classList.remove('hit'); btn.classList.add('miss');
+        } else if (btn.classList.contains('miss')) {
+            btn.classList.remove('miss');
+        } else {
+            btn.classList.add('hit');
+        }
+    }
+
+    function saveData() {
+        const location = document.getElementById('locationInput').value || "Unbekannt";
+        const windStr = document.getElementById('windInput').value;
+        const windDir = document.getElementById('windDirInput').value;
+        let proneHits = 0, standHits = 0;
+        
+        document.getElementById('prone-row').querySelectorAll('.target-btn').forEach(b => { if(b.classList.contains('hit')) proneHits++; });
+        document.getElementById('stand-row').querySelectorAll('.target-btn').forEach(b => { if(b.classList.contains('hit')) standHits++; });
+
+        const newEntry = {
+            id: Date.now(),
+            date: new Date().toLocaleDateString('de-DE'),
+            location: location, wind: windStr, windDir: windDir,
+            prone: proneHits, stand: standHits
+        };
+
+        trainingData.unshift(newEntry);
+        localStorage.setItem('biathlonData', JSON.stringify(trainingData));
+        alert("Gespeichert!");
+        showSection('dashboard');
+    }
+
+    function resetForm() {
+        document.getElementById('locationInput').value = "";
+        document.getElementById('windDirInput').value = "";
+        document.querySelectorAll('.target-btn').forEach(b => b.classList.remove('hit', 'miss'));
+    }
+
+    function deleteEntry(id) {
+        if(confirm("Diesen Eintrag wirklich löschen?")) {
+            trainingData = trainingData.filter(entry => entry.id !== id);
+            localStorage.setItem('biathlonData', JSON.stringify(trainingData));
+            updateDashboard();
+        }
+    }
+
+    function updateDashboard() {
+        if (trainingData.length === 0) {
+            document.getElementById('history-list').innerHTML = '<div class="card" style="text-align:center; opacity:0.7;">Noch keine Daten vorhanden.</div>';
+            drawChart(0, 1); // Leeres Chart
+            document.getElementById('totalPercent').innerText = "0%";
+            document.getElementById('pronePercent').innerText = "0%";
+            document.getElementById('standPercent').innerText = "0%";
+            return;
+        }
+
+        let totalShots = 0, totalHits = 0, proneTotal = 0, proneH = 0, standTotal = 0, standH = 0;
+        const historyList = document.getElementById('history-list');
+        historyList.innerHTML = "";
+
+        trainingData.forEach(entry => {
+            totalShots += 10; totalHits += (entry.prone + entry.stand);
+            proneTotal += 5; proneH += entry.prone;
+            standTotal += 5; standH += entry.stand;
+
+            const item = document.createElement('div');
+            item.className = 'card';
+            item.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <strong>${entry.date}</strong> - ${entry.location}<br>
+                        <small style="color:#aaa;">💨 ${entry.wind} ${entry.windDir ? '('+entry.windDir+' Uhr)' : ''}</small>
+                    </div>
+                    <div style="text-align:right;">
+                        <span style="color:var(--accent-color); font-weight:bold; font-size:1.2em;">${Math.round(((entry.prone+entry.stand)/10)*100)}%</span>
+                        <span class="delete-btn" onclick="deleteEntry(${entry.id})">x</span><br>
+                        <small>L: ${entry.prone}/5 | S: ${entry.stand}/5</small>
+                    </div>
+                </div>`;
+            historyList.appendChild(item);
+        });
+
+        document.getElementById('totalPercent').innerText = Math.round((totalHits / totalShots) * 100) + "%";
+        document.getElementById('pronePercent').innerText = (proneTotal > 0 ? Math.round((proneH / proneTotal) * 100) : 0) + "%";
+        document.getElementById('standPercent').innerText = (standTotal > 0 ? Math.round((standH / standTotal) * 100) : 0) + "%";
+        
+        drawChart(totalHits, totalShots - totalHits);
+    }
+
+    function drawChart(hits, misses) {
+        const ctx = document.getElementById('totalChart').getContext('2d');
+        if(myChart) myChart.destroy();
+        myChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Treffer', 'Fehler'],
+                datasets: [{
+                    data: [hits, misses],
+                    backgroundColor: ['#A5C9FF', '#FF5C5C'],
+                    borderWidth: 0
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
+    }
+
+    // --- IMPORT / EXPORT FUNKTIONEN ---
+    function downloadData() {
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(trainingData));
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href", dataStr);
+        downloadAnchorNode.setAttribute("download", "biathlon_daten.json");
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+    }
+
+    function loadDataFile(input) {
+        const file = input.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const json = JSON.parse(e.target.result);
+                if(Array.isArray(json)) {
+                    if(confirm("Dies wird deine aktuellen Daten überschreiben. Fortfahren?")) {
+                        trainingData = json;
+                        localStorage.setItem('biathlonData', JSON.stringify(trainingData));
+                        updateDashboard();
+                        alert("Daten erfolgreich geladen!");
+                    }
+                } else { alert("Ungültige Datei."); }
+            } catch(err) { alert("Fehler beim Lesen der Datei."); }
+        };
+        reader.readAsText(file);
+    }
+
+    function clearAllData() {
+        if(confirm("Bist du sicher? Alle Daten gehen verloren!")) {
+            localStorage.removeItem('biathlonData');
+            trainingData = [];
+            updateDashboard();
+        }
+    }
+</script>
+
+</body>
+</html>
